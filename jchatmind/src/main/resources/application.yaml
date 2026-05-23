@@ -21,7 +21,7 @@ spring:
             required: true
   ai:
     deepseek:
-      api-key: your-api-key
+      api-key: "sk-2b5a361cdf9d46ad9621de4ef6bc6f16"
       base-url: https://api.deepseek.com
       chat:
         options:
