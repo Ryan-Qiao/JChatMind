@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { message as antdMessage } from "antd";
 import AgentChatHistory from "./agentChatView/AgentChatHistory.tsx";
@@ -13,6 +13,7 @@ import { useAgents } from "../../hooks/useAgents.ts";
 import { useChatSessions } from "../../hooks/useChatSessions.ts";
 import EmptyAgentChatView from "./agentChatView/EmptyAgentChatView.tsx";
 import type { ChatMessageVO, SseMessage, SseMessageType } from "../../types";
+import { getAgentEmoji } from "../../utils";
 
 const AgentChatView: React.FC = () => {
   const { chatSessionId } = useParams<{ chatSessionId: string }>();
@@ -98,6 +99,11 @@ const AgentChatView: React.FC = () => {
   }, []);
 
   const [agentId, setAgentId] = useState<string>("");
+
+  const currentAgent = useMemo(() => {
+    if (!agentId) return null;
+    return agents.find((agent) => agent.id === agentId) ?? null;
+  }, [agentId, agents]);
 
   const getChatMessages = useCallback(async () => {
     if (!chatSessionId) {
@@ -271,6 +277,21 @@ const AgentChatView: React.FC = () => {
 
   return (
     <div className="flex flex-col h-full">
+      <div className="h-14 shrink-0 border-b border-zinc-100 bg-white px-5 flex items-center">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="w-9 h-9 rounded-xl bg-indigo-50 flex items-center justify-center text-base shrink-0">
+            {agentId ? getAgentEmoji(agentId) : "🤖"}
+          </div>
+          <div className="min-w-0">
+            <div className="text-sm font-semibold text-zinc-900 truncate">
+              {currentAgent?.name ?? "未知智能体"}
+            </div>
+            <div className="text-xs text-zinc-400 truncate max-w-[520px]">
+              {currentAgent?.description || (agentId ? `Agent ID: ${agentId}` : "当前对话")}
+            </div>
+          </div>
+        </div>
+      </div>
       <AgentChatHistory
         messages={messages}
         streamingContent={streamingContent}
