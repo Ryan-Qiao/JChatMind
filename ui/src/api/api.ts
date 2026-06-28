@@ -51,6 +51,45 @@ export interface GetAgentsResponse {
   agents: AgentVO[];
 }
 
+export interface AgentMemoryVO {
+  id: string;
+  agentId: string;
+  sourceMessageId?: string;
+  memoryType: string;
+  title: string;
+  content: string;
+  priority: number;
+  enabled: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+  lastUsedAt?: string;
+}
+
+export interface GetAgentMemoriesResponse {
+  agentMemories: AgentMemoryVO[];
+}
+
+export interface CreateAgentMemoryRequest {
+  sourceMessageId?: string;
+  memoryType?: string;
+  title: string;
+  content: string;
+  priority?: number;
+  enabled?: boolean;
+}
+
+export interface CreateAgentMemoryResponse {
+  agentMemoryId: string;
+}
+
+export interface UpdateAgentMemoryRequest {
+  memoryType?: string;
+  title?: string;
+  content?: string;
+  priority?: number;
+  enabled?: boolean;
+}
+
 /**
  * 获取所有 agents
  */
@@ -82,6 +121,30 @@ export async function updateAgent(
   request: UpdateAgentRequest,
 ): Promise<void> {
   return patch<void>(`/agents/${agentId}`, request);
+}
+
+export async function getAgentMemories(
+  agentId: string,
+): Promise<GetAgentMemoriesResponse> {
+  return get<GetAgentMemoriesResponse>(`/agents/${agentId}/memories`);
+}
+
+export async function createAgentMemory(
+  agentId: string,
+  request: CreateAgentMemoryRequest,
+): Promise<CreateAgentMemoryResponse> {
+  return post<CreateAgentMemoryResponse>(`/agents/${agentId}/memories`, request);
+}
+
+export async function updateAgentMemory(
+  memoryId: string,
+  request: UpdateAgentMemoryRequest,
+): Promise<void> {
+  return patch<void>(`/agent-memories/${memoryId}`, request);
+}
+
+export async function deleteAgentMemory(memoryId: string): Promise<void> {
+  return del<void>(`/agent-memories/${memoryId}`);
 }
 
 /**

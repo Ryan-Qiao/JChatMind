@@ -9,10 +9,12 @@ import com.kama.jchatmind.converter.KnowledgeBaseConverter;
 import com.kama.jchatmind.mapper.AgentMapper;
 import com.kama.jchatmind.mapper.KnowledgeBaseMapper;
 import com.kama.jchatmind.model.dto.AgentDTO;
+import com.kama.jchatmind.model.dto.AgentMemoryDTO;
 import com.kama.jchatmind.model.dto.ChatMessageDTO;
 import com.kama.jchatmind.model.dto.KnowledgeBaseDTO;
 import com.kama.jchatmind.model.entity.Agent;
 import com.kama.jchatmind.model.entity.KnowledgeBase;
+import com.kama.jchatmind.service.AgentMemoryFacadeService;
 import com.kama.jchatmind.service.ChatMessageFacadeService;
 import com.kama.jchatmind.service.SseService;
 import com.kama.jchatmind.service.ToolFacadeService;
@@ -34,6 +36,7 @@ import java.util.stream.Collectors;
 public class JChatMindFactory {
 
     private static final Logger log = LoggerFactory.getLogger(JChatMindFactory.class);
+    private static final int MAX_AGENT_CORE_MEMORIES = 10;
     private final ChatClientRegistry chatClientRegistry;
     private final SseService sseService;
     private final AgentMapper agentMapper;
@@ -43,6 +46,7 @@ public class JChatMindFactory {
     private final ToolFacadeService toolFacadeService;
     private final ChatMessageFacadeService chatMessageFacadeService;
     private final ChatMessageConverter chatMessageConverter;
+    private final AgentMemoryFacadeService agentMemoryFacadeService;
 
     // 运行时 Agent 配置
     private AgentDTO agentConfig;
@@ -56,7 +60,8 @@ public class JChatMindFactory {
             KnowledgeBaseConverter knowledgeBaseConverter,
             ToolFacadeService toolFacadeService,
             ChatMessageFacadeService chatMessageFacadeService,
-            ChatMessageConverter chatMessageConverter
+            ChatMessageConverter chatMessageConverter,
+            AgentMemoryFacadeService agentMemoryFacadeService
     ) {
         this.chatClientRegistry = chatClientRegistry;
         this.sseService = sseService;
@@ -67,6 +72,7 @@ public class JChatMindFactory {
         this.toolFacadeService = toolFacadeService;
         this.chatMessageFacadeService = chatMessageFacadeService;
         this.chatMessageConverter = chatMessageConverter;
+        this.agentMemoryFacadeService = agentMemoryFacadeService;
     }
 
     private Agent loadAgent(String agentId) {
@@ -77,7 +83,7 @@ public class JChatMindFactory {
      * 将数据库中存储的记忆恢复成 List<Message> 结构
      */
     private List<Message> loadMemory(String chatSessionId) {
-        int messageLength = agentConfig.getChatOptions().getMessageLength();
+        int messageLength = Math.max(2, agentConfig.getChatOptions().getMessageLength());
         List<ChatMessageDTO> chatMessages = chatMessageFacadeService.getChatMessagesBySessionIdRecently(chatSessionId, messageLength);
         List<Message> memory = new ArrayList<>();
         for (ChatMessageDTO chatMessageDTO : chatMessages) {
@@ -256,12 +262,41 @@ public class JChatMindFactory {
         }
     }
 
+    private String renderAgentMemoryPrompt(String agentId) {
+        List<AgentMemoryDTO> memories = agentMemoryFacadeService.getEnabledAgentMemories(
+                agentId,
+                MAX_AGENT_CORE_MEMORIES
+        );
+        if (memories.isEmpty()) {
+            return "";
+        }
+
+        String memoryItems = memories.stream()
+                .map(memory -> "- [%s] %s：%s".formatted(
+                        StringUtils.hasText(memory.getMemoryType()) ? memory.getMemoryType() : "fact",
+                        memory.getTitle(),
+                        memory.getContent()
+                ))
+                .collect(Collectors.joining("\n"));
+
+        return """
+
+                【当前 Agent 长期记忆】
+                以下记忆只适用于当前 Agent，是跨会话保存的长期上下文。使用规则：
+                - 可以参考这些记忆保持当前 Agent 的连续性。
+                - 如果记忆与用户最新输入冲突，以用户最新输入为准。
+                - 不要主动暴露“内部记忆”这个机制，除非用户询问。
+                %s
+                """.formatted(memoryItems);
+    }
+
     private JChatMind buildAgentRuntime(
             Agent agent,
             List<Message> memory,
             List<KnowledgeBaseDTO> knowledgeBases,
             List<ToolCallback> toolCallbacks,
-            String chatSessionId
+            String chatSessionId,
+            String agentMemoryPrompt
     ) {
         ChatClient chatClient = chatClientRegistry.get(agent.getModel());
         if (Objects.isNull(chatClient)) {
@@ -274,13 +309,16 @@ public class JChatMindFactory {
                 agent.getSystemPrompt(),
                 chatClient,
                 agentConfig.getChatOptions().getMessageLength(),
+                agentConfig.getChatOptions().getTemperature(),
+                agentConfig.getChatOptions().getTopP(),
                 memory,
                 toolCallbacks,
                 knowledgeBases,
                 chatSessionId,
                 sseService,
                 chatMessageFacadeService,
-                chatMessageConverter
+                chatMessageConverter,
+                agentMemoryPrompt
         );
     }
 
@@ -298,13 +336,15 @@ public class JChatMindFactory {
         List<Tool> runtimeTools = resolveRuntimeTools(agentConfig, knowledgeBases, memory);
         // 将工具调用转换成 ToolCallback 的形式
         List<ToolCallback> toolCallbacks = buildToolCallbacks(runtimeTools);
+        String agentMemoryPrompt = renderAgentMemoryPrompt(agent.getId());
 
         return buildAgentRuntime(
                 agent,
                 memory,
                 knowledgeBases,
                 toolCallbacks,
-                chatSessionId
+                chatSessionId,
+                agentMemoryPrompt
         );
     }
 }

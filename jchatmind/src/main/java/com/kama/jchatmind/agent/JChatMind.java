@@ -78,6 +78,8 @@ public class JChatMind {
 
     private ChatMessageFacadeService chatMessageFacadeService;
 
+    private String agentMemoryPrompt;
+
     // 最后一次的 ChatResponse
     private ChatResponse lastChatResponse;
 
@@ -93,13 +95,16 @@ public class JChatMind {
                      String systemPrompt,
                      ChatClient chatClient,
                      Integer maxMessages,
+                     Double temperature,
+                     Double topP,
                      List<Message> memory,
                      List<ToolCallback> availableTools,
                      List<KnowledgeBaseDTO> availableKbs,
                      String chatSessionId,
                      SseService sseService,
                      ChatMessageFacadeService chatMessageFacadeService,
-                     ChatMessageConverter chatMessageConverter
+                     ChatMessageConverter chatMessageConverter,
+                     String agentMemoryPrompt
     ) {
         this.agentId = agentId;
         this.name = name;
@@ -116,6 +121,7 @@ public class JChatMind {
 
         this.chatMessageFacadeService = chatMessageFacadeService;
         this.chatMessageConverter = chatMessageConverter;
+        this.agentMemoryPrompt = agentMemoryPrompt;
 
         this.agentState = AgentState.IDLE;
 
@@ -130,8 +136,10 @@ public class JChatMind {
             this.chatMemory.add(chatSessionId, new SystemMessage(systemPrompt));
         }
 
-        // 关闭 SpringAI 自带的内部的工具调用自动执行功能
         this.chatOptions = DefaultToolCallingChatOptions.builder()
+                .temperature(temperature)
+                .topP(topP)
+                // 关闭 SpringAI 自带的内部工具自动执行，工具调用由 Agent Loop 接管。
                 .internalToolExecutionEnabled(false)
                 .build();
 
@@ -216,6 +224,49 @@ public class JChatMind {
         pendingChatMessages.clear();
     }
 
+    private void sendAgentDone() {
+        sseService.send(this.chatSessionId, SseMessage.builder()
+                .type(SseMessage.Type.AI_DONE)
+                .payload(SseMessage.Payload.builder()
+                        .done(true)
+                        .build())
+                .build());
+    }
+
+    private String buildUserFacingErrorMessage(Exception e) {
+        Throwable cause = e;
+        while (cause.getCause() != null) {
+            cause = cause.getCause();
+        }
+
+        String detail = cause.getMessage();
+        if (detail != null) {
+            String normalized = detail.toLowerCase();
+            if (normalized.contains("401")
+                    || normalized.contains("authentication")
+                    || normalized.contains("api key")
+                    || normalized.contains("unauthorized")) {
+                return "模型调用失败：API Key 无效或未配置，请检查当前 Agent 对应模型的环境变量后重启后端。";
+            }
+        }
+
+        if (!StringUtils.hasText(detail)) {
+            return "模型调用失败：后端 Agent 执行过程中发生未知错误，请查看服务日志。";
+        }
+        return "模型调用失败：" + detail;
+    }
+
+    private void notifyRunError(Exception e) {
+        try {
+            saveMessage(new AssistantMessage(buildUserFacingErrorMessage(e)));
+            refreshPendingMessages();
+        } catch (Exception notifyException) {
+            log.warn("Failed to notify frontend about agent error", notifyException);
+        } finally {
+            sendAgentDone();
+        }
+    }
+
     // thinkPrompt 应该放到 system 中还是
     private boolean think() {
         // 构建决策提示词，根据是否有可用的知识库来调整
@@ -229,11 +280,13 @@ public class JChatMind {
                 - getCity 只用于查询用户当前位置；不要把它当作文章主题城市，也不要用当前位置替代用户明确指定的城市。
                 - getDate 只用于用户询问当前日期，或天气等确实需要日期参数的工具链。
                 """;
+        String memoryPrompt = StringUtils.hasLength(this.agentMemoryPrompt) ? this.agentMemoryPrompt : "";
 
         if (this.availableKbs != null && !this.availableKbs.isEmpty()) {
             thinkPrompt = """
                     现在你是一个智能的具体「决策模块」
                     请根据当前对话上下文，决定下一步的动作。
+                    %s
                     %s
 
                     【结束规则】
@@ -244,17 +297,18 @@ public class JChatMind {
                     - 你目前拥有的知识库列表以及描述：%s
                     - 如果有缺失的上下文时，优先从知识库中进行搜索
                     - 调用 KnowledgeTool 时，kbsId 必须从上面的知识库列表中选择真实 UUID，禁止编造 default、默认知识库、unknown 等不存在的 ID
-                    """.formatted(toolUsePolicy, this.availableKbs);
+                    """.formatted(toolUsePolicy, memoryPrompt, this.availableKbs);
         } else {
             thinkPrompt = """
                     现在你是一个智能的具体「决策模块」
                     请根据当前对话上下文，决定下一步的动作。
                     %s
+                    %s
 
                     【结束规则】
                     - 如果当前上下文中的工具结果已经足够回答用户，请直接给用户最终回答，不要再调用工具。
                     - 最终回答必须面向用户总结工具返回的信息，不能只说明“已完成”。
-                    """.formatted(toolUsePolicy);
+                    """.formatted(toolUsePolicy, memoryPrompt);
         }
 
         // 将 thinkPrompt 通过 .user(thinkPrompt) 的方式构造进入 chatClient 中
@@ -358,7 +412,7 @@ public class JChatMind {
         } catch (Exception e) {
             agentState = AgentState.ERROR;
             log.error("Error running agent", e);
-            throw new RuntimeException("Error running agent", e);
+            notifyRunError(e);
         }
     }
 

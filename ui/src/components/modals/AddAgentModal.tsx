@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
-import { Button, Checkbox, Input, Modal, Select, Slider } from "antd";
+import { Button, Checkbox, Input, List, Modal, Select, Slider, Switch, message } from "antd";
 import TextArea from "antd/es/input/TextArea";
-import { SaveOutlined } from "@ant-design/icons";
+import { DeleteOutlined, PlusOutlined, SaveOutlined } from "@ant-design/icons";
 import {
   type CreateAgentRequest,
   type UpdateAgentRequest,
@@ -9,6 +9,11 @@ import {
   type ModelType,
   getOptionalTools,
   type ToolVO,
+  type AgentMemoryVO,
+  createAgentMemory,
+  deleteAgentMemory,
+  getAgentMemories,
+  updateAgentMemory,
 } from "../../api/api.ts";
 import { useKnowledgeBases } from "../../hooks/useKnowledgeBases.ts";
 
@@ -29,7 +34,7 @@ const menuItems = [
   { key: "knowledge", label: "知识库设置" },
   // { key: "mcp", label: "MCP 服务器" },
   { key: "tools", label: "工具调用" },
-  // { key: "memory", label: "全局记忆" },
+  { key: "memory", label: "记忆管理" },
 ];
 
 const AddAgentModal: React.FC<AddAgentModalProps> = ({
@@ -47,6 +52,13 @@ const AddAgentModal: React.FC<AddAgentModalProps> = ({
 
   // 工具列表
   const [tools, setTools] = useState<ToolVO[]>([]);
+  const [agentMemories, setAgentMemories] = useState<AgentMemoryVO[]>([]);
+  const [memoryDraft, setMemoryDraft] = useState({
+    title: "",
+    content: "",
+    memoryType: "fact",
+    priority: 0,
+  });
 
   // 表单数据
   const [formData, setFormData] = useState<CreateAgentRequest>({
@@ -64,6 +76,15 @@ const AddAgentModal: React.FC<AddAgentModalProps> = ({
   });
 
   const [createAgentLoading, setCreateAgentLoading] = useState(false);
+
+  const refreshAgentMemories = async () => {
+    if (!editingAgent?.id) {
+      setAgentMemories([]);
+      return;
+    }
+    const resp = await getAgentMemories(editingAgent.id);
+    setAgentMemories(resp.agentMemories);
+  };
 
   // 当编辑的 agent 变化时，更新表单数据
   useEffect(() => {
@@ -98,6 +119,16 @@ const AddAgentModal: React.FC<AddAgentModalProps> = ({
       });
     }
   }, [editingAgent, open]);
+
+  useEffect(() => {
+    if (open && editingAgent?.id) {
+      refreshAgentMemories().catch((error) => {
+        console.error("获取 Agent 记忆失败:", error);
+      });
+    } else {
+      setAgentMemories([]);
+    }
+  }, [open, editingAgent?.id]);
 
   // 获取工具列表
   useEffect(() => {
@@ -194,6 +225,9 @@ const AddAgentModal: React.FC<AddAgentModalProps> = ({
                   <label className="block text-gray-700 font-medium mb-1">
                     选择模型
                   </label>
+                  <p className="text-xs text-gray-500 mb-2">
+                    不同模型会影响回答质量、速度和费用。保存后，该智能体之后的新回复会使用这里选择的模型。
+                  </p>
                   <Select
                     options={[
                       {
@@ -217,6 +251,9 @@ const AddAgentModal: React.FC<AddAgentModalProps> = ({
                   <label className="block text-gray-700 font-medium mb-2">
                     模型参数
                   </label>
+                  <div className="mb-4 rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-xs leading-5 text-blue-900">
+                    这些参数会影响模型“怎么回答”，不会改变智能体的人设和工具权限。普通用户建议保持默认值。
+                  </div>
                   <div className="space-y-4">
                     <div>
                       <div className="flex items-center justify-between mb-2">
@@ -245,6 +282,9 @@ const AddAgentModal: React.FC<AddAgentModalProps> = ({
                           })
                         }
                       />
+                      <p className="mt-1 text-xs leading-5 text-gray-500">
+                        控制回答的发散程度。越低越稳定、越像标准答案；越高越有创意，但也更容易跑偏。写代码、查资料建议低一些，写文案可适当高一些。
+                      </p>
                     </div>
                     <div>
                       <div className="flex items-center justify-between mb-2">
@@ -273,13 +313,16 @@ const AddAgentModal: React.FC<AddAgentModalProps> = ({
                           })
                         }
                       />
+                      <p className="mt-1 text-xs leading-5 text-gray-500">
+                        控制模型从多大范围里挑选下一个词。越低越保守，越高选择范围越大。通常不需要和温度同时大幅调整。
+                      </p>
                     </div>
                     <div>
                       <div className="flex items-center justify-between mb-2">
                         <label className="block text-sm text-gray-600">
                           消息窗口长度
                           <span className="text-gray-400 ml-1 text-xs">
-                            (1 - 100)
+                            (2 - 100)
                           </span>
                         </label>
                         <span className="text-sm font-medium text-gray-700 min-w-[40px] text-right">
@@ -287,7 +330,7 @@ const AddAgentModal: React.FC<AddAgentModalProps> = ({
                         </span>
                       </div>
                       <Slider
-                        min={1}
+                        min={2}
                         max={100}
                         step={1}
                         value={formData?.chatOptions?.messageLength}
@@ -301,6 +344,9 @@ const AddAgentModal: React.FC<AddAgentModalProps> = ({
                           })
                         }
                       />
+                      <p className="mt-1 text-xs leading-5 text-gray-500">
+                        控制每次回复前带入最近多少条聊天消息。越长越能记住当前会话上下文，但请求更大、响应可能更慢；这不是长期记忆，跨会话信息请使用 Agent Memory。
+                      </p>
                     </div>
                   </div>
                 </div>
@@ -488,6 +534,145 @@ const AddAgentModal: React.FC<AddAgentModalProps> = ({
                     </div>
                   )}
                 </div>
+              </div>
+            )}
+            {selectedKey === "memory" && (
+              <div>
+                {!isEditMode || !editingAgent ? (
+                  <div className="text-sm text-gray-500 py-8 text-center">
+                    请先保存 Agent，再管理该 Agent 的长期记忆。
+                  </div>
+                ) : (
+                  <div>
+                    <div className="mb-4">
+                      <label className="block text-gray-700 font-medium mb-2">
+                        Agent 长期记忆
+                      </label>
+                      <p className="text-sm text-gray-500 mb-4">
+                        这些记忆只对当前 Agent 生效，会在该 Agent 的新会话中作为长期上下文注入。
+                      </p>
+                      <div className="border border-gray-200 rounded-lg p-3 mb-4">
+                        <div className="grid grid-cols-2 gap-2 mb-2">
+                          <Input
+                            placeholder="标题，例如：用户备考方向"
+                            value={memoryDraft.title}
+                            onChange={(e) =>
+                              setMemoryDraft({
+                                ...memoryDraft,
+                                title: e.target.value,
+                              })
+                            }
+                          />
+                          <Select
+                            value={memoryDraft.memoryType}
+                            onChange={(value) =>
+                              setMemoryDraft({
+                                ...memoryDraft,
+                                memoryType: value,
+                              })
+                            }
+                            options={[
+                              { value: "fact", label: "事实" },
+                              { value: "preference", label: "偏好" },
+                              { value: "task", label: "任务" },
+                              { value: "feedback", label: "反馈" },
+                              { value: "decision", label: "决策" },
+                            ]}
+                          />
+                        </div>
+                        <TextArea
+                          rows={3}
+                          placeholder="记忆内容，例如：用户正在准备 Java 后端面试，希望回答带面试表达。"
+                          value={memoryDraft.content}
+                          onChange={(e) =>
+                            setMemoryDraft({
+                              ...memoryDraft,
+                              content: e.target.value,
+                            })
+                          }
+                        />
+                        <div className="flex justify-end mt-2">
+                          <Button
+                            type="primary"
+                            icon={<PlusOutlined />}
+                            onClick={async () => {
+                              if (!memoryDraft.title.trim() || !memoryDraft.content.trim()) {
+                                message.warning("请填写记忆标题和内容");
+                                return;
+                              }
+                              await createAgentMemory(editingAgent.id, {
+                                title: memoryDraft.title.trim(),
+                                content: memoryDraft.content.trim(),
+                                memoryType: memoryDraft.memoryType,
+                                priority: memoryDraft.priority,
+                                enabled: true,
+                              });
+                              setMemoryDraft({
+                                title: "",
+                                content: "",
+                                memoryType: "fact",
+                                priority: 0,
+                              });
+                              await refreshAgentMemories();
+                              message.success("Agent 记忆已保存");
+                            }}
+                          >
+                            新增记忆
+                          </Button>
+                        </div>
+                      </div>
+                      <List
+                        dataSource={agentMemories}
+                        locale={{ emptyText: "暂无 Agent 记忆" }}
+                        renderItem={(memoryItem) => (
+                          <List.Item
+                            actions={[
+                              <Switch
+                                key="enabled"
+                                checked={memoryItem.enabled}
+                                checkedChildren="启用"
+                                unCheckedChildren="禁用"
+                                onChange={async (checked) => {
+                                  await updateAgentMemory(memoryItem.id, {
+                                    enabled: checked,
+                                  });
+                                  await refreshAgentMemories();
+                                }}
+                              />,
+                              <Button
+                                key="delete"
+                                danger
+                                type="text"
+                                icon={<DeleteOutlined />}
+                                onClick={async () => {
+                                  await deleteAgentMemory(memoryItem.id);
+                                  await refreshAgentMemories();
+                                  message.success("Agent 记忆已删除");
+                                }}
+                              />,
+                            ]}
+                          >
+                            <List.Item.Meta
+                              title={
+                                <div className="flex items-center gap-2">
+                                  <span>{memoryItem.title}</span>
+                                  <span className="text-xs text-gray-400">
+                                    {memoryItem.memoryType}
+                                  </span>
+                                </div>
+                              }
+                              description={
+                                <div className="text-sm text-gray-600 whitespace-pre-wrap">
+                                  {memoryItem.content}
+                                </div>
+                              }
+                            />
+                          </List.Item>
+                        )}
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
