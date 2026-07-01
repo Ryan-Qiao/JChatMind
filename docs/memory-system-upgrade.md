@@ -837,6 +837,8 @@ score = similarity * 0.6 + importance * 0.3 + recency * 0.1
 
 ### Phase 2：User Memory
 
+状态：已完成。
+
 目标：
 
 - 增加所有 Agent 共享的用户偏好。
@@ -847,11 +849,20 @@ score = similarity * 0.6 + importance * 0.3 + recency * 0.1
 - 实现 `UserMemoryService`。
 - 在所有 Agent 上下文中注入 User Memory。
 - 增加前端管理入口。
+- 聊天页支持手动写入 User Memory。
+- 开发模式下展示本轮可注入的 User Memory。
+- 注入 User Memory 后更新 `last_used_at`，便于调试和验证。
 
 验收：
 
 - 用户设置“以后用中文回答”后，所有 Agent 新会话都能遵守。
 - 某个 Agent 专属信息不会误写到 User Memory。
+
+当前实现说明：
+
+- 当前项目还没有用户体系，因此 `user_id` 为空的 User Memory 作为全局用户记忆。
+- User Memory 适合保存跨 Agent 都有效的用户偏好、沟通习惯和稳定背景。
+- 自动判断并写入记忆不属于 Phase 2，后续在自动化记忆管理阶段实现。
 
 ### Phase 3：Agent Retrieved Memory
 

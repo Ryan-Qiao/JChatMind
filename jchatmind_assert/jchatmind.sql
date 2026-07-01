@@ -61,6 +61,27 @@ CREATE TABLE agent_memory (
 CREATE INDEX idx_agent_memory_agent_enabled_priority
 ON agent_memory (agent_id, enabled, memory_scope, priority DESC, updated_at DESC);
 
+CREATE TABLE user_memory (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+    user_id UUID,
+    source_message_id UUID REFERENCES chat_message(id) ON DELETE SET NULL,
+
+    memory_type TEXT NOT NULL DEFAULT 'preference', -- preference / profile / communication / constraint
+    title TEXT NOT NULL,
+    content TEXT NOT NULL,
+    priority INT NOT NULL DEFAULT 0,
+    confidence NUMERIC(4, 3) NOT NULL DEFAULT 1.0,
+    enabled BOOLEAN NOT NULL DEFAULT TRUE,
+
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW(),
+    last_used_at TIMESTAMP
+);
+
+CREATE INDEX idx_user_memory_global_enabled_priority
+ON user_memory (user_id, enabled, priority DESC, updated_at DESC);
+
 CREATE TABLE knowledge_base (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 

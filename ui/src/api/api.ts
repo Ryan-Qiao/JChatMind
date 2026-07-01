@@ -93,6 +93,49 @@ export interface UpdateAgentMemoryRequest {
   enabled?: boolean;
 }
 
+export interface UserMemoryVO {
+  id: string;
+  userId?: string;
+  sourceMessageId?: string;
+  memoryType: string;
+  title: string;
+  content: string;
+  priority: number;
+  confidence: number;
+  enabled: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+  lastUsedAt?: string;
+}
+
+export interface GetUserMemoriesResponse {
+  userMemories: UserMemoryVO[];
+}
+
+export interface CreateUserMemoryRequest {
+  userId?: string;
+  sourceMessageId?: string;
+  memoryType?: string;
+  title: string;
+  content: string;
+  priority?: number;
+  confidence?: number;
+  enabled?: boolean;
+}
+
+export interface CreateUserMemoryResponse {
+  userMemoryId: string;
+}
+
+export interface UpdateUserMemoryRequest {
+  memoryType?: string;
+  title?: string;
+  content?: string;
+  priority?: number;
+  confidence?: number;
+  enabled?: boolean;
+}
+
 /**
  * 获取所有 agents
  */
@@ -148,6 +191,27 @@ export async function updateAgentMemory(
 
 export async function deleteAgentMemory(memoryId: string): Promise<void> {
   return del<void>(`/agent-memories/${memoryId}`);
+}
+
+export async function getUserMemories(): Promise<GetUserMemoriesResponse> {
+  return get<GetUserMemoriesResponse>("/user-memories");
+}
+
+export async function createUserMemory(
+  request: CreateUserMemoryRequest,
+): Promise<CreateUserMemoryResponse> {
+  return post<CreateUserMemoryResponse>("/user-memories", request);
+}
+
+export async function updateUserMemory(
+  memoryId: string,
+  request: UpdateUserMemoryRequest,
+): Promise<void> {
+  return patch<void>(`/user-memories/${memoryId}`, request);
+}
+
+export async function deleteUserMemory(memoryId: string): Promise<void> {
+  return del<void>(`/user-memories/${memoryId}`);
 }
 
 /**

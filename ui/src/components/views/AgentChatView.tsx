@@ -5,12 +5,15 @@ import AgentChatHistory from "./agentChatView/AgentChatHistory.tsx";
 import AgentChatInput from "./agentChatView/AgentChatInput.tsx";
 import {
   createAgentMemory,
+  createUserMemory,
   createChatMessage,
   createChatSession,
   getAgentMemories,
   getChatMessagesBySessionId,
   getChatSession,
+  getUserMemories,
   type AgentMemoryVO,
+  type UserMemoryVO,
 } from "../../api/api.ts";
 import { useAgents } from "../../hooks/useAgents.ts";
 import { useChatSessions } from "../../hooks/useChatSessions.ts";
@@ -28,6 +31,8 @@ const AgentChatView: React.FC = () => {
 
   const [messages, setMessages] = useState<ChatMessageVO[]>([]);
   const [agentMemories, setAgentMemories] = useState<AgentMemoryVO[]>([]);
+  const [userMemories, setUserMemories] = useState<UserMemoryVO[]>([]);
+  const [memoryTarget, setMemoryTarget] = useState<"agent" | "user">("agent");
   const [memoryModalOpen, setMemoryModalOpen] = useState(false);
   const [memoryDraft, setMemoryDraft] = useState({
     title: "",
@@ -146,6 +151,11 @@ const AgentChatView: React.FC = () => {
     setAgentMemories(resp.agentMemories.filter((memory) => memory.enabled));
   }, [agentId]);
 
+  const refreshUserMemories = useCallback(async () => {
+    const resp = await getUserMemories();
+    setUserMemories(resp.userMemories.filter((memory) => memory.enabled));
+  }, []);
+
   const getChatMessages = useCallback(async () => {
     if (!chatSessionId) {
       return;
@@ -173,18 +183,25 @@ const AgentChatView: React.FC = () => {
     });
   }, [refreshAgentMemories]);
 
-  const openRememberModal = () => {
+  useEffect(() => {
+    refreshUserMemories().catch((error) => {
+      console.error("获取 User Memory 失败:", error);
+    });
+  }, [refreshUserMemories]);
+
+  const openRememberModal = (target: "agent" | "user") => {
     const lastUserMessage = [...messages].reverse().find((item) => item.role === "user");
+    setMemoryTarget(target);
     setMemoryDraft({
       title: "",
       content: lastUserMessage?.content ?? "",
-      memoryType: "fact",
+      memoryType: target === "user" ? "preference" : "fact",
     });
     setMemoryModalOpen(true);
   };
 
-  const saveAgentMemory = async () => {
-    if (!agentId) {
+  const saveMemory = async () => {
+    if (memoryTarget === "agent" && !agentId) {
       antdMessage.warning("当前对话没有关联 Agent");
       return;
     }
@@ -192,17 +209,32 @@ const AgentChatView: React.FC = () => {
       antdMessage.warning("请填写记忆标题和内容");
       return;
     }
-    await createAgentMemory(agentId, {
-      title: memoryDraft.title.trim(),
-      content: memoryDraft.content.trim(),
-      memoryType: memoryDraft.memoryType,
-      enabled: true,
-      priority: 0,
-    });
+
+    if (memoryTarget === "user") {
+      await createUserMemory({
+        title: memoryDraft.title.trim(),
+        content: memoryDraft.content.trim(),
+        memoryType: memoryDraft.memoryType,
+        enabled: true,
+        priority: 0,
+        confidence: 1,
+      });
+      await refreshUserMemories();
+      antdMessage.success("所有 Agent 已可参考该用户记忆");
+    } else {
+      await createAgentMemory(agentId, {
+        title: memoryDraft.title.trim(),
+        content: memoryDraft.content.trim(),
+        memoryType: memoryDraft.memoryType,
+        enabled: true,
+        priority: 0,
+      });
+      await refreshAgentMemories();
+      antdMessage.success("当前 Agent 已记住该内容");
+    }
+
     setMemoryModalOpen(false);
     setMemoryDraft({ title: "", content: "", memoryType: "fact" });
-    await refreshAgentMemories();
-    antdMessage.success("当前 Agent 已记住该内容");
   };
 
   const sendMessageToSession = useCallback(
@@ -442,13 +474,29 @@ const AgentChatView: React.FC = () => {
         agentStatusType={agentStatusType}
       />
       <div className="border-t border-zinc-100 p-4 bg-white">
-        {import.meta.env.DEV && agentMemories.length > 0 && (
+        {import.meta.env.DEV && (userMemories.length > 0 || agentMemories.length > 0) && (
           <div className="mb-3">
             <Collapse
               size="small"
               ghost
               items={[
-                {
+                ...(userMemories.length > 0 ? [{
+                  key: "user-memory-debug",
+                  label: `本轮可注入 User Memory（${userMemories.length}）`,
+                  children: (
+                    <div className="space-y-2 text-xs text-zinc-500">
+                      {userMemories.map((memory) => (
+                        <div key={memory.id} className="rounded-md bg-amber-50 border border-amber-100 p-2">
+                          <div className="font-medium text-amber-800">
+                            [{memory.memoryType}] {memory.title}
+                          </div>
+                          <div className="whitespace-pre-wrap mt-1">{memory.content}</div>
+                        </div>
+                      ))}
+                    </div>
+                  ),
+                }] : []),
+                ...(agentMemories.length > 0 ? [{
                   key: "agent-memory-debug",
                   label: `本轮可注入 Agent Memory（${agentMemories.length}）`,
                   children: (
@@ -463,13 +511,16 @@ const AgentChatView: React.FC = () => {
                       ))}
                     </div>
                   ),
-                },
+                }] : []),
               ]}
             />
           </div>
         )}
-        <div className="flex justify-end mb-2">
-          <Button size="small" onClick={openRememberModal} disabled={!agentId}>
+        <div className="flex justify-end gap-2 mb-2">
+          <Button size="small" onClick={() => openRememberModal("user")}>
+            让所有 Agent 记住
+          </Button>
+          <Button size="small" onClick={() => openRememberModal("agent")} disabled={!agentId}>
             让当前 Agent 记住
           </Button>
         </div>
@@ -477,10 +528,10 @@ const AgentChatView: React.FC = () => {
       </div>
       <Modal
         open={memoryModalOpen}
-        title="让当前 Agent 记住"
+        title={memoryTarget === "user" ? "让所有 Agent 记住" : "让当前 Agent 记住"}
         okText="保存记忆"
         cancelText="取消"
-        onOk={saveAgentMemory}
+        onOk={saveMemory}
         onCancel={() => setMemoryModalOpen(false)}
       >
         <div className="space-y-3">
@@ -497,17 +548,30 @@ const AgentChatView: React.FC = () => {
             onChange={(value) =>
               setMemoryDraft({ ...memoryDraft, memoryType: value })
             }
-            options={[
-              { value: "fact", label: "事实" },
-              { value: "preference", label: "偏好" },
-              { value: "task", label: "任务" },
-              { value: "feedback", label: "反馈" },
-              { value: "decision", label: "决策" },
-            ]}
+            options={
+              memoryTarget === "user"
+                ? [
+                    { value: "preference", label: "偏好" },
+                    { value: "profile", label: "用户背景" },
+                    { value: "communication", label: "沟通习惯" },
+                    { value: "constraint", label: "约束" },
+                  ]
+                : [
+                    { value: "fact", label: "事实" },
+                    { value: "preference", label: "偏好" },
+                    { value: "task", label: "任务" },
+                    { value: "feedback", label: "反馈" },
+                    { value: "decision", label: "决策" },
+                  ]
+            }
           />
           <Input.TextArea
             rows={5}
-            placeholder="记忆内容。建议只保存长期有效、只适用于当前 Agent 的信息。"
+            placeholder={
+              memoryTarget === "user"
+                ? "用户级记忆会被所有 Agent 参考。只保存跨 Agent 都稳定有效的偏好、背景或沟通习惯。"
+                : "记忆内容。建议只保存长期有效、只适用于当前 Agent 的信息。"
+            }
             value={memoryDraft.content}
             onChange={(event) =>
               setMemoryDraft({ ...memoryDraft, content: event.target.value })
