@@ -8,6 +8,7 @@
         <id property="id" column="id" jdbcType="VARCHAR"/>
         <result property="agentId" column="agent_id" jdbcType="VARCHAR"/>
         <result property="sourceMessageId" column="source_message_id" jdbcType="VARCHAR"/>
+        <result property="memoryScope" column="memory_scope" jdbcType="VARCHAR"/>
         <result property="memoryType" column="memory_type" jdbcType="VARCHAR"/>
         <result property="title" column="title" jdbcType="VARCHAR"/>
         <result property="content" column="content" jdbcType="VARCHAR"/>
@@ -19,7 +20,7 @@
     </resultMap>
 
     <sql id="Base_Column_List">
-        id,agent_id,source_message_id,
+        id,agent_id,source_message_id,memory_scope,
         memory_type,title,content,priority,
         enabled,created_at,updated_at,last_used_at
     </sql>
@@ -30,6 +31,7 @@
         (
             agent_id,
             source_message_id,
+            memory_scope,
             memory_type,
             title,
             content,
@@ -46,6 +48,7 @@
                     <when test="sourceMessageId != null">CAST(#{sourceMessageId} AS uuid)</when>
                     <otherwise>NULL</otherwise>
                 </choose>,
+                #{memoryScope},
                 #{memoryType},
                 #{title},
                 #{content},
@@ -67,7 +70,7 @@
         SELECT <include refid="Base_Column_List"/>
         FROM agent_memory
         WHERE agent_id = CAST(#{agentId} AS uuid)
-        ORDER BY priority DESC, updated_at DESC
+        ORDER BY memory_scope ASC, priority DESC, updated_at DESC
     </select>
 
     <select id="selectEnabledByAgentId" resultMap="BaseResultMap">
@@ -75,6 +78,7 @@
         FROM agent_memory
         WHERE agent_id = CAST(#{agentId} AS uuid)
           AND enabled = TRUE
+          AND memory_scope = 'core'
         ORDER BY priority DESC, updated_at DESC
         LIMIT #{limit}
     </select>
@@ -87,6 +91,9 @@
             </if>
             <if test="memoryType != null">
                 memory_type = #{memoryType},
+            </if>
+            <if test="memoryScope != null">
+                memory_scope = #{memoryScope},
             </if>
             <if test="title != null">
                 title = #{title},
@@ -106,6 +113,16 @@
             updated_at = NOW()
         </set>
         WHERE id = CAST(#{id} AS uuid)
+    </update>
+
+    <update id="markUsedByIds">
+        UPDATE agent_memory
+        SET last_used_at = NOW(),
+            updated_at = updated_at
+        WHERE id IN
+        <foreach collection="ids" item="id" open="(" separator="," close=")">
+            CAST(#{id} AS uuid)
+        </foreach>
     </update>
 
     <delete id="deleteById">

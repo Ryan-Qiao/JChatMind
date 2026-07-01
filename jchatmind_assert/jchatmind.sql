@@ -46,6 +46,7 @@ CREATE TABLE agent_memory (
     agent_id UUID NOT NULL REFERENCES agent(id) ON DELETE CASCADE,
     source_message_id UUID REFERENCES chat_message(id) ON DELETE SET NULL,
 
+    memory_scope TEXT NOT NULL DEFAULT 'core', -- core / retrieved
     memory_type TEXT NOT NULL DEFAULT 'fact', -- preference / fact / decision / issue / task / feedback
     title TEXT NOT NULL,
     content TEXT NOT NULL,
@@ -58,7 +59,7 @@ CREATE TABLE agent_memory (
 );
 
 CREATE INDEX idx_agent_memory_agent_enabled_priority
-ON agent_memory (agent_id, enabled, priority DESC, updated_at DESC);
+ON agent_memory (agent_id, enabled, memory_scope, priority DESC, updated_at DESC);
 
 CREATE TABLE knowledge_base (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

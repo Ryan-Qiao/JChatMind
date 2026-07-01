@@ -55,6 +55,7 @@ export interface AgentMemoryVO {
   id: string;
   agentId: string;
   sourceMessageId?: string;
+  memoryScope?: string;
   memoryType: string;
   title: string;
   content: string;
@@ -71,6 +72,7 @@ export interface GetAgentMemoriesResponse {
 
 export interface CreateAgentMemoryRequest {
   sourceMessageId?: string;
+  memoryScope?: string;
   memoryType?: string;
   title: string;
   content: string;
@@ -83,6 +85,7 @@ export interface CreateAgentMemoryResponse {
 }
 
 export interface UpdateAgentMemoryRequest {
+  memoryScope?: string;
   memoryType?: string;
   title?: string;
   content?: string;

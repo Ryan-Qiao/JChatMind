@@ -5,6 +5,7 @@ import lombok.Data;
 @Data
 public class CreateAgentMemoryRequest {
     private String sourceMessageId;
+    private String memoryScope;
     private String memoryType;
     private String title;
     private String content;

@@ -134,11 +134,6 @@ public class JChatMind {
                 .build();
         this.chatMemory.add(chatSessionId, memory);
 
-        // 添加系统提示
-        if (StringUtils.hasLength(systemPrompt)) {
-            this.chatMemory.add(chatSessionId, new SystemMessage(systemPrompt));
-        }
-
         this.chatOptions = DefaultToolCallingChatOptions.builder()
                 .temperature(temperature)
                 .topP(topP)
@@ -302,10 +297,23 @@ public class JChatMind {
         }
     }
 
-    // thinkPrompt 应该放到 system 中还是
     private boolean think() {
-        // 构建决策提示词，根据是否有可用的知识库来调整
-        String thinkPrompt;
+        // 这里是运行时控制规则，不能覆盖 Agent 自身的角色设定。
+        String systemPromptText;
+        String agentRolePrompt = StringUtils.hasText(this.systemPrompt)
+                ? this.systemPrompt
+                : "你是名为「%s」的智能体助手。".formatted(this.name);
+        String runtimePolicy = """
+
+                【当前 Agent 角色设定】
+                %s
+
+                【Agent 角色规则】
+                - 你必须始终遵守当前 Agent 的系统提示词和角色设定。
+                - 不要把自己称为“决策模块”“工具调度模块”“内部模块”。
+                - 当用户询问“你是谁”或类似问题时，应按当前 Agent 的角色回答。
+                - 以下规则只用于内部判断下一步动作，不能作为对用户暴露的身份。
+                """.formatted(agentRolePrompt);
         String toolUsePolicy = """
 
                 【工具使用规则】
@@ -318,9 +326,9 @@ public class JChatMind {
         String memoryPrompt = StringUtils.hasLength(this.agentMemoryPrompt) ? this.agentMemoryPrompt : "";
 
         if (this.availableKbs != null && !this.availableKbs.isEmpty()) {
-            thinkPrompt = """
-                    现在你是一个智能的具体「决策模块」
-                    请根据当前对话上下文，决定下一步的动作。
+            systemPromptText = """
+                    请根据当前对话上下文，在保持当前 Agent 角色的前提下决定下一步动作。
+                    %s
                     %s
                     %s
 
@@ -332,23 +340,20 @@ public class JChatMind {
                     - 你目前拥有的知识库列表以及描述：%s
                     - 如果有缺失的上下文时，优先从知识库中进行搜索
                     - 调用 KnowledgeTool 时，kbsId 必须从上面的知识库列表中选择真实 UUID，禁止编造 default、默认知识库、unknown 等不存在的 ID
-                    """.formatted(toolUsePolicy, memoryPrompt, this.availableKbs);
+                    """.formatted(runtimePolicy, toolUsePolicy, memoryPrompt, this.availableKbs);
         } else {
-            thinkPrompt = """
-                    现在你是一个智能的具体「决策模块」
-                    请根据当前对话上下文，决定下一步的动作。
+            systemPromptText = """
+                    请根据当前对话上下文，在保持当前 Agent 角色的前提下决定下一步动作。
+                    %s
                     %s
                     %s
 
                     【结束规则】
                     - 如果当前上下文中的工具结果已经足够回答用户，请直接给用户最终回答，不要再调用工具。
                     - 最终回答必须面向用户总结工具返回的信息，不能只说明“已完成”。
-                    """.formatted(toolUsePolicy, memoryPrompt);
+                    """.formatted(runtimePolicy, toolUsePolicy, memoryPrompt);
         }
 
-        // 将 thinkPrompt 通过 .user(thinkPrompt) 的方式构造进入 chatClient 中
-        // 既能让每次 messageList 的最后一条是 本条提示词，
-        // 又能够避免将 thinkPrompt 加入到聊天记录中
         Prompt prompt = Prompt.builder()
                 .chatOptions(this.chatOptions)
                 .messages(this.chatMemory.get(this.chatSessionId))
@@ -357,7 +362,7 @@ public class JChatMind {
         // 直接获取完整响应，避免流式分片导致最后保存的内容为空。
         this.lastChatResponse = this.chatClient
                 .prompt(prompt)
-                .system(thinkPrompt)
+                .system(systemPromptText)
                 .toolCallbacks(this.availableTools.toArray(new ToolCallback[0]))
                 .call()
                 .chatClientResponse()

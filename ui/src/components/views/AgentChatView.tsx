@@ -456,7 +456,7 @@ const AgentChatView: React.FC = () => {
                       {agentMemories.map((memory) => (
                         <div key={memory.id} className="rounded-md bg-zinc-50 border border-zinc-100 p-2">
                           <div className="font-medium text-zinc-700">
-                            [{memory.memoryType}] {memory.title}
+                            [{memory.memoryScope ?? "core"} / {memory.memoryType}] {memory.title}
                           </div>
                           <div className="whitespace-pre-wrap mt-1">{memory.content}</div>
                         </div>

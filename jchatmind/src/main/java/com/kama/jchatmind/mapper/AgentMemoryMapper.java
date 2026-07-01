@@ -16,6 +16,8 @@ public interface AgentMemoryMapper {
 
     List<AgentMemory> selectEnabledByAgentId(@Param("agentId") String agentId, @Param("limit") int limit);
 
+    int markUsedByIds(@Param("ids") List<String> ids);
+
     int updateById(AgentMemory agentMemory);
 
     int deleteById(String id);

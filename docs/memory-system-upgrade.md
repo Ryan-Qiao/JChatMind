@@ -807,6 +807,8 @@ score = similarity * 0.6 + importance * 0.3 + recency * 0.1
 
 ### Phase 1：Agent Memory MVP
 
+状态：已完成。
+
 目标：
 
 - 先解决“同一个 Agent 多个会话之间不能共享记忆”的核心问题。
@@ -817,11 +819,21 @@ score = similarity * 0.6 + importance * 0.3 + recency * 0.1
 - 实现 `AgentMemoryService`。
 - 支持手动写入 Agent Core Memory。
 - 在 `JChatMindFactory` 构造上下文时注入 Agent Core Memory。
+- 明确 `memory_scope=core`，Phase 1 只注入启用的 Agent Core Memory。
+- 注入记忆后更新 `last_used_at`，用于验证和调试记忆是否被使用。
 
 验收：
 
 - 在某个 Agent 中写入一条记忆后，新建该 Agent 的另一个对话也能使用。
 - 其他 Agent 不会看到这条记忆。
+
+当前实现说明：
+
+- 后端已提供 `AgentMemoryController / AgentMemoryFacadeService / AgentMemoryMapper`。
+- 前端聊天页已提供“让当前 Agent 记住”入口。
+- 开发模式下聊天页可查看本轮可注入的 Agent Memory。
+- Agent 角色系统提示与运行时工具规则已合并为单次模型调用的系统提示，避免不同 Agent 之间角色串线。
+- `JChatMindFactory` 不再使用共享 `agentConfig` 字段，避免多 Agent 并发时配置互相覆盖。
 
 ### Phase 2：User Memory
 

@@ -48,9 +48,6 @@ public class JChatMindFactory {
     private final ChatMessageConverter chatMessageConverter;
     private final AgentMemoryFacadeService agentMemoryFacadeService;
 
-    // 运行时 Agent 配置
-    private AgentDTO agentConfig;
-
     public JChatMindFactory(
             ChatClientRegistry chatClientRegistry,
             SseService sseService,
@@ -82,7 +79,7 @@ public class JChatMindFactory {
     /**
      * 将数据库中存储的记忆恢复成 List<Message> 结构
      */
-    private List<Message> loadMemory(String chatSessionId) {
+    private List<Message> loadMemory(String chatSessionId, AgentDTO agentConfig) {
         int messageLength = Math.max(2, agentConfig.getChatOptions().getMessageLength());
         List<ChatMessageDTO> chatMessages = chatMessageFacadeService.getChatMessagesBySessionIdRecently(chatSessionId, messageLength);
         List<Message> memory = new ArrayList<>();
@@ -123,8 +120,7 @@ public class JChatMindFactory {
 
     private AgentDTO toAgentConfig(Agent agent) {
         try {
-            agentConfig = agentConverter.toDTO(agent);
-            return agentConfig;
+            return agentConverter.toDTO(agent);
         } catch (JsonProcessingException e) {
             throw new IllegalStateException("解析 Agent 配置失败", e);
         }
@@ -307,6 +303,7 @@ public class JChatMindFactory {
 
     private JChatMind buildAgentRuntime(
             Agent agent,
+            AgentDTO agentConfig,
             List<Message> memory,
             List<KnowledgeBaseDTO> knowledgeBases,
             List<ToolCallback> toolCallbacks,
@@ -343,7 +340,7 @@ public class JChatMindFactory {
     public JChatMind create(String agentId, String chatSessionId) {
         Agent agent = loadAgent(agentId);
         AgentDTO agentConfig = toAgentConfig(agent);
-        List<Message> memory = loadMemory(chatSessionId);
+        List<Message> memory = loadMemory(chatSessionId, agentConfig);
 
         // 解析 agent 的支持的知识库
         List<KnowledgeBaseDTO> knowledgeBases = resolveRuntimeKnowledgeBases(agentConfig);
@@ -355,6 +352,7 @@ public class JChatMindFactory {
 
         return buildAgentRuntime(
                 agent,
+                agentConfig,
                 memory,
                 knowledgeBases,
                 toolCallbacks,

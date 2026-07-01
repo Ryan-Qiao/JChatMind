@@ -24,6 +24,7 @@ import java.util.List;
 @Service
 @AllArgsConstructor
 public class AgentMemoryFacadeServiceImpl implements AgentMemoryFacadeService {
+    private static final String DEFAULT_MEMORY_SCOPE = "core";
     private static final String DEFAULT_MEMORY_TYPE = "fact";
     private static final int DEFAULT_PRIORITY = 0;
 
@@ -49,7 +50,15 @@ public class AgentMemoryFacadeServiceImpl implements AgentMemoryFacadeService {
         if (!StringUtils.hasText(agentId)) {
             return List.of();
         }
-        return agentMemoryMapper.selectEnabledByAgentId(agentId, limit)
+        List<AgentMemory> memories = agentMemoryMapper.selectEnabledByAgentId(agentId, limit);
+        List<String> usedMemoryIds = memories.stream()
+                .map(AgentMemory::getId)
+                .filter(StringUtils::hasText)
+                .toList();
+        if (!usedMemoryIds.isEmpty()) {
+            agentMemoryMapper.markUsedByIds(usedMemoryIds);
+        }
+        return memories
                 .stream()
                 .map(agentMemoryConverter::toDTO)
                 .toList();
@@ -86,7 +95,7 @@ public class AgentMemoryFacadeServiceImpl implements AgentMemoryFacadeService {
 
         AgentMemoryDTO dto = agentMemoryConverter.toDTO(existing);
         agentMemoryConverter.updateDTOFromRequest(dto, request);
-        validateMemory(dto);
+        normalizeDefaults(dto);
 
         AgentMemory updated = agentMemoryConverter.toEntity(dto);
         updated.setId(existing.getId());
@@ -137,9 +146,15 @@ public class AgentMemoryFacadeServiceImpl implements AgentMemoryFacadeService {
         if (!StringUtils.hasText(dto.getContent())) {
             throw new BizException("Agent 记忆内容不能为空");
         }
+        if (!"core".equals(dto.getMemoryScope())) {
+            throw new BizException("Phase 1 仅支持 Agent Core Memory");
+        }
     }
 
     private void normalizeDefaults(AgentMemoryDTO dto) {
+        if (!StringUtils.hasText(dto.getMemoryScope())) {
+            dto.setMemoryScope(DEFAULT_MEMORY_SCOPE);
+        }
         if (!StringUtils.hasText(dto.getMemoryType())) {
             dto.setMemoryType(DEFAULT_MEMORY_TYPE);
         }
@@ -151,6 +166,8 @@ public class AgentMemoryFacadeServiceImpl implements AgentMemoryFacadeService {
         }
         dto.setTitle(dto.getTitle().trim());
         dto.setContent(dto.getContent().trim());
+        dto.setMemoryScope(dto.getMemoryScope().trim());
         dto.setMemoryType(dto.getMemoryType().trim());
+        validateMemory(dto);
     }
 }

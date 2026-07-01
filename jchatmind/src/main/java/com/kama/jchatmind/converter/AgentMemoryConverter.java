@@ -17,6 +17,7 @@ public class AgentMemoryConverter {
                 .id(dto.getId())
                 .agentId(dto.getAgentId())
                 .sourceMessageId(dto.getSourceMessageId())
+                .memoryScope(dto.getMemoryScope())
                 .memoryType(dto.getMemoryType())
                 .title(dto.getTitle())
                 .content(dto.getContent())
@@ -34,6 +35,7 @@ public class AgentMemoryConverter {
                 .id(entity.getId())
                 .agentId(entity.getAgentId())
                 .sourceMessageId(entity.getSourceMessageId())
+                .memoryScope(entity.getMemoryScope())
                 .memoryType(entity.getMemoryType())
                 .title(entity.getTitle())
                 .content(entity.getContent())
@@ -51,6 +53,7 @@ public class AgentMemoryConverter {
         return AgentMemoryDTO.builder()
                 .agentId(agentId)
                 .sourceMessageId(request.getSourceMessageId())
+                .memoryScope(request.getMemoryScope())
                 .memoryType(request.getMemoryType())
                 .title(request.getTitle())
                 .content(request.getContent())
@@ -65,6 +68,7 @@ public class AgentMemoryConverter {
                 .id(dto.getId())
                 .agentId(dto.getAgentId())
                 .sourceMessageId(dto.getSourceMessageId())
+                .memoryScope(dto.getMemoryScope())
                 .memoryType(dto.getMemoryType())
                 .title(dto.getTitle())
                 .content(dto.getContent())
@@ -86,6 +90,9 @@ public class AgentMemoryConverter {
 
         if (request.getMemoryType() != null) {
             dto.setMemoryType(request.getMemoryType());
+        }
+        if (request.getMemoryScope() != null) {
+            dto.setMemoryScope(request.getMemoryScope());
         }
         if (request.getTitle() != null) {
             dto.setTitle(request.getTitle());
